@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog</title>
+    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet" />
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Posts</h1>
+        <div class="row">
+            {% for post in posts %}
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ post.title }}</h5>
+                        {% if post.text %}
+                        <p class="card-text">{{ post.text }}</p>
+                        {% endif %}
+                        {% if post.images %}
+                        <div class="card-images">
+                            {% for image in post.images %}
+                            <img src="{{ image }}" class="img-fluid mb-2" alt="Post Image">
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if post.video_link %}
+                            <a href="{{ post.video_link }}" target="_blank">Video</a>
+                        {% endif %}                        
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

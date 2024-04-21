@@ -51,3 +51,26 @@ cd DIRECTORY_NAME # - to change the current working directory to DIRECTORY_NAME
 - 201: Created Successfully
 - 504: Gateway Timeout
 - 422: Unprocessable Entity
+
+## Branching Scheme
+```bash
+git branch testing
+git branch staging
+git branch production
+
+git switch testing
+git push -u origin testing
+git switch staging
+git push -u origin staging
+git switch production
+git push -u origin production
+
+git switch production
+git branch feature/NAME_OF_THE_FEATURE
+git branch fix/NAME_OF_THE_FIX
+git branch hotfix/NAME_OF_THE_HOTFIX
+git switch THE_NEWLY_CREATED_BRANCH
+git add .
+git commit -m "MESSAGE"
+git push -u origin THE_NEWLY_CREATED_BRANCH
+```

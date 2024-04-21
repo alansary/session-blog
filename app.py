@@ -5,6 +5,7 @@ from flask_restful import Api, Resource, reqparse
 from werkzeug.exceptions import BadRequest
 from flask import make_response, jsonify
 import datetime
+from flask import request
 from flask import render_template
 
 app = Flask(__name__)
@@ -12,6 +13,7 @@ api = Api(app)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' # SQLite database
 db = SQLAlchemy(app)
+
 
 class PostModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -30,6 +32,7 @@ class PostModel(db.Model):
             column.name: getattr(self, column.name) for column in self.__table__.columns
         }
 
+
 if os.path.exists('instance/database.db'):
     print('Database already exists')
 else:
@@ -37,34 +40,57 @@ else:
         db.create_all()
     print('Database created successfully')
 
+
 class Posts(Resource):
     def post(self):
+        # Get Content-Type version
+        content_type_version = request.headers.get('Content-Type')
+
         posts_post_args = reqparse.RequestParser()
         posts_post_args.add_argument(
             "title", type=str, required=True, help="Post title is required"
         )
-        posts_post_args.add_argument("text", type=str, required=False)
+
+        # Take action on request data based on the Content-Type version
+        if content_type_version == 'application/vnd.blog.com.v1+json':
+            posts_post_args.add_argument("text", type=str, required=False)
+        elif content_type_version == 'application/vnd.blog.com.v2+json':
+            posts_post_args.add_argument("text", type=str, required=True)
+        else:
+            return make_response(jsonify({'error': 'Unsupported version'}), 400)
+
         posts_post_args.add_argument(
             "images", type=str, required=False, action="append"
         )
         posts_post_args.add_argument("video_link", type=str, required=False)
 
         try:
-            args = posts_post_args.parse_args() # to validate the request arguments
+            args = posts_post_args.parse_args()
             try:
                 post = PostModel(
-                    title=args['title'],
-                    text=args['text'],
-                    images=args['images'],
-                    video_link=args['video_link'],
-                    created_at=datetime.datetime.now()
+                    title=args["title"],
+                    text=args["text"],
+                    images=args["images"],
+                    video_link=args["video_link"],
+                    created_at=datetime.datetime.now(),
                 )
                 db.session.add(post)
                 db.session.commit()
 
-                return make_response(jsonify(post.as_dict()), 201)
+                # Get Accept version
+                accept_version = request.headers.get('Accept')
+
+                # Take action on request data based on the Accept version
+                if accept_version == 'application/vnd.blog.com.v1+json':
+                    return make_response(jsonify(post.as_dict()), 201)
+                elif accept_version == 'application/vnd.blog.com.v2+json':
+                    return make_response(jsonify({"post": post.as_dict()}), 201)
+                else:
+                    return make_response(jsonify({'error': 'Unsupported version'}), 400)
             except Exception as e:
-                return make_response(jsonify({"error": f"An error occurred: {e._message}"}), 500)
+                return make_response(
+                    jsonify({"error": f"An error occurred: {e._message}"}), 500
+                )
         except BadRequest as e:
             return make_response(jsonify({"error": e.description}), e.code)
 
@@ -73,22 +99,33 @@ class Posts(Resource):
         posts_as_json = [post.as_dict() for post in posts]
         return make_response(jsonify(posts_as_json), 200)
 
+
 class Post(Resource):
     def get(self, post_id):
         post = PostModel.query.filter_by(id=post_id).first()
         if not post:
-            return make_response(jsonify({"error": f"Post with ID {post_id} not found"}), 404)
+            return make_response(
+                jsonify({"error": f"Post with ID {post_id} not found"}), 404
+            )
         return make_response(jsonify(post.as_dict()), 200)
 
     def put(self, post_id):
+        # Get The API Version From The Query String
+        v = request.args.get('v')
+        api_version = v if v in ('1', '2') else '1'
+
         post_put_args = reqparse.RequestParser()
         post_put_args.add_argument(
             "title", type=str, required=True, help="Post title is required"
         )
-        post_put_args.add_argument("text", type=str, required=False)
-        post_put_args.add_argument(
-            "images", type=str, required=False, action="append"
-        )
+
+        # Take action on request data based on the API version
+        if api_version == '1':
+            post_put_args.add_argument("text", type=str, required=False)
+        elif api_version == '2':
+            post_put_args.add_argument("text", type=str, required=True)
+
+        post_put_args.add_argument("images", type=str, required=False, action="append")
         post_put_args.add_argument("video_link", type=str, required=False)
 
         try:
@@ -96,35 +133,48 @@ class Post(Resource):
             try:
                 post = PostModel.query.filter_by(id=post_id).first()
                 if not post:
-                    return make_response(jsonify({"error": f"Post with ID {post_id} not found"}), 404)
-                for arg in args:
-                    if arg in post.__table__.columns:
-                        setattr(post, arg, args[arg])
-                post.updated_at = datetime.datetime.now()
-                db.session.add(post)
-                db.session.commit()
-                return make_response(jsonify(post.as_dict()), 200)
+                    return make_response(
+                        jsonify({"error": f"Post with ID {post_id} not found"}), 404
+                    )
+                else:
+                    for arg in args:
+                        if arg in post.__table__.columns:
+                            setattr(post, arg, args[arg])
+                    post.updated_at = datetime.datetime.now()
+                    db.session.add(post)
+                    db.session.commit()
+
+                    # Take action on response data based on the API version
+                    if api_version == '1':
+                        return make_response(jsonify(post.as_dict()), 200)
+                    elif api_version == '2':
+                        return make_response(jsonify({"post": post.as_dict()}), 200)
             except Exception as e:
-                return make_response(jsonify({"error": f"An error occurred: {e._message}"}), 500)
+                return make_response(
+                    jsonify({"error": f"An error occurred: {e._message}"}), 500
+                )
         except BadRequest as e:
             return make_response(jsonify({"error": e.description}), e.code)
 
     def delete(self, post_id):
         if not PostModel.query.filter_by(id=post_id).first():
-            return make_response(jsonify({"error": f"Post with ID {post_id} not found"}), 404)
+            return make_response(
+                jsonify({"error": f"Post with ID {post_id} not found"}), 404
+            )
+
         PostModel.query.filter_by(id=post_id).delete()
         db.session.commit()
         return make_response(jsonify({"message": f"Post with ID {post_id} deleted successfully"}), 200)
 
-api.add_resource(Posts, '/api/posts')
-api.add_resource(Post, '/api/posts/<int:post_id>')
 
-@app.route('/', methods=['GET'])
+api.add_resource(Posts, "/api/posts")
+api.add_resource(Post, "/api/posts/<int:post_id>")
+
+
+@app.route("/", methods=["GET"])
 def home():
-    # return '<h1>Welcome to Blog!</h1>'
-    posts = PostModel.query.all()
-    posts_as_json = [post.as_dict() for post in posts]
-    return render_template('home.html', posts=posts_as_json)
+    return render_template("home.html")
 
-if __name__ == '__main__':
-    app.run()
+
+if __name__ == "__main__":
+    app.run(debug=True)
